@@ -3,13 +3,24 @@ package com.david.guidedjournal
 /**
  * JournalRepository - Manages all data operations between the UI and database.
  *
+ * The repository acts as a middle layer between the application's UI
+ * and the Room database. The UI communicates with this repository
+ * instead of directly accessing the DAO.
+ *
  * @param dao The JournalDao used to perform database operations
  */
 class JournalRepository(private val dao: JournalDao) {
 
     /**
      * Daily rotating quotes shown on the home screen.
-     * Cycles through based on the day of the year.
+     *
+     * The list contains motivational, reflective, and faith-based quotes.
+     * The quote displayed to the user is selected by getTodayQuote()
+     * using the current day of the year.
+     *
+     * Because the selection is based on the day of the year, the quote
+     * automatically changes each day without requiring the quotes to
+     * be stored in the database.
      */
     val dailyQuotes = listOf(
 
@@ -79,7 +90,16 @@ class JournalRepository(private val dao: JournalDao) {
     )
 
     /**
-     * Returns today's quote based on the day of the year.
+     * Returns today's quote based on the current day of the year.
+     *
+     * Calendar.DAY_OF_YEAR returns a number representing the current
+     * day within the year, from 1 through 365 (or 366 in a leap year).
+     *
+     * The modulo operation (%) keeps the calculated index within the
+     * valid range of the dailyQuotes list. Once the end of the list
+     * is reached, the selection starts again from the beginning.
+     *
+     * @return The quote selected for today's date.
      */
     fun getTodayQuote(): String {
         val dayOfYear = java.util.Calendar.getInstance()
@@ -91,9 +111,16 @@ class JournalRepository(private val dao: JournalDao) {
     /**
      * Determines the current time of day period.
      *
-     * Morning: 6am-11:59am
-     * Afternoon: 12pm-5:59pm
-     * Night: 6pm-5:59am
+     * The app divides the day into three periods:
+     *
+     * Morning:   6:00 AM - 11:59 AM
+     * Afternoon: 12:00 PM - 5:59 PM
+     * Night:     6:00 PM - 5:59 AM
+     *
+     * The returned value is used when selecting prompts that are
+     * appropriate for the current part of the day.
+     *
+     * @return "Morning", "Afternoon", or "Night".
      */
     fun getCurrentTimeOfDay(): String {
         val hour = java.util.Calendar.getInstance()
@@ -108,6 +135,15 @@ class JournalRepository(private val dao: JournalDao) {
 
     /**
      * Saves a new journal entry to the database.
+     *
+     * This function passes the Entry object to the DAO, which performs
+     * the actual Room database insertion.
+     *
+     * Because database operations should not block the main UI thread,
+     * this function is marked as suspend and should be called from
+     * a coroutine.
+     *
+     * @param entry The journal entry that should be saved.
      */
     suspend fun addEntry(entry: Entry) {
         dao.insertEntry(entry)
@@ -115,6 +151,11 @@ class JournalRepository(private val dao: JournalDao) {
 
     /**
      * Retrieves all journal entries from the database.
+     *
+     * The DAO is responsible for ordering the entries, while the
+     * repository provides the results to the UI or ViewModel.
+     *
+     * @return A list of all journal entries, newest first.
      */
     suspend fun getEntries(): List<Entry> {
         return dao.getAllEntries()
@@ -122,6 +163,11 @@ class JournalRepository(private val dao: JournalDao) {
 
     /**
      * Updates an existing journal entry.
+     *
+     * The Entry object should contain the same ID as the existing
+     * database record so Room knows which record to update.
+     *
+     * @param entry The updated journal entry.
      */
     suspend fun updateEntry(entry: Entry) {
         dao.updateEntry(entry)
@@ -129,6 +175,11 @@ class JournalRepository(private val dao: JournalDao) {
 
     /**
      * Deletes an existing journal entry.
+     *
+     * The DAO receives the Entry object and removes the corresponding
+     * record from the database.
+     *
+     * @param entry The journal entry that should be deleted.
      */
     suspend fun deleteEntry(entry: Entry) {
         dao.deleteEntry(entry)
@@ -136,47 +187,83 @@ class JournalRepository(private val dao: JournalDao) {
 
     /**
      * Gets a random prompt for the current time of day.
+     *
+     * The current period is first determined using getCurrentTimeOfDay().
+     * That value is then passed to the DAO, which selects a random
+     * matching prompt from the database.
+     *
+     * @return A random Prompt for the current time period, or null
+     * if no matching prompt exists.
      */
     suspend fun getCurrentPrompt(): Prompt? {
         val timeOfDay = getCurrentTimeOfDay()
+
         return dao.getPromptByTimeOfDay(timeOfDay)
     }
 
     /**
      * Gets multiple prompts for the current time of day.
      *
-     * @param count How many prompts to load
+     * This can be used when the user wants additional prompts beyond
+     * the currently displayed prompt.
+     *
+     * @param count How many prompts to load.
+     * @return A list of random prompts for the current time period.
      */
     suspend fun getMorePrompts(count: Int = 3): List<Prompt> {
         val timeOfDay = getCurrentTimeOfDay()
+
         return dao.getPromptsByTimeOfDay(timeOfDay, count)
     }
 
     /**
      * Gets the next mandatory prompt the user should answer.
      *
-     * Rotates through all mandatory prompts using the user's
-     * current daily count.
+     * All mandatory prompts are retrieved from the database and the
+     * user's current daily count is used to determine which prompt
+     * should be displayed next.
      *
-     * @param todayCount How many mandatory prompts the user has answered today
-     * @return The next mandatory Prompt to show
+     * The modulo operation allows the prompts to rotate continuously.
+     * For example, if there are 10 mandatory prompts, a count of 10
+     * starts again at the first prompt.
+     *
+     * @param todayCount How many mandatory prompts the user has answered today.
+     * @return The next mandatory Prompt to show, or null if no mandatory
+     * prompts exist.
      */
     suspend fun getNextMandatoryPrompt(todayCount: Int): Prompt? {
+        // Retrieve all prompts marked as mandatory.
         val allMandatory = dao.getAllMandatoryPrompts()
 
+        // If there are no mandatory prompts, there is nothing to display.
         if (allMandatory.isEmpty()) {
             return null
         }
 
+        // Calculate which mandatory prompt should be shown next.
         val index = todayCount % allMandatory.size
 
+        // Return the selected mandatory prompt.
         return allMandatory[index]
     }
 
     /**
-     * Retrieves all prompts grouped by category.
+     * Retrieves all prompts and groups them by category.
      *
-     * @return Map of category name to list of prompts
+     * The resulting map uses the prompt category as the key and
+     * contains all prompts belonging to that category as the value.
+     *
+     * For example:
+     *
+     * Gratitude -> [Prompt, Prompt, Prompt]
+     * Growth    -> [Prompt, Prompt]
+     * Spiritual -> [Prompt, Prompt, Prompt]
+     *
+     * This is useful for screens that allow users to browse prompts
+     * by category.
+     *
+     * @return A map where each key is a category and each value is
+     * a list of prompts belonging to that category.
      */
     suspend fun getAllPromptsByCategory(): Map<String, List<Prompt>> {
         return dao.getAllPrompts()
@@ -184,26 +271,59 @@ class JournalRepository(private val dao: JournalDao) {
     }
 
     /**
-     * Checks whether an entry is still within its 24-hour edit window.
+     * Checks whether a journal entry is still within its 24-hour
+     * editing window.
+     *
+     * An entry can be edited if less than 24 hours have passed since
+     * its saved date.
+     *
+     * System.currentTimeMillis() returns the current time in
+     * milliseconds. The entry.date value is expected to also be
+     * stored as a timestamp in milliseconds.
+     *
+     * @param entry The journal entry to check.
+     * @return True if the entry can still be edited; false otherwise.
      */
     fun isEditable(entry: Entry): Boolean {
+        // Number of milliseconds in 24 hours.
         val twentyFourHours = 24 * 60 * 60 * 1000L
 
+        // Compare the current time with the entry's creation time.
         return System.currentTimeMillis() - entry.date < twentyFourHours
     }
 
     /**
-     * Seeds the database with categorized prompts on first launch.
-     * Skips initialization if prompts already exist.
+     * Seeds the database with the application's initial prompts.
+     *
+     * This function is normally called during the app's first launch.
+     * It first checks whether prompts already exist in the database.
+     * If prompts are already present, initialization is skipped to
+     * prevent duplicate prompt records.
+     *
+     * The prompts are divided into Morning, Afternoon, and Night
+     * sections. Some prompts are marked as mandatory while the others
+     * are optional prompts that can be selected randomly.
      */
     suspend fun initializePrompts() {
 
+        // Check whether prompts have already been added to the database.
         val count = dao.getPromptCount()
 
+        // If prompts already exist, do not insert them again.
         if (count > 0) {
             return
         }
 
+        /**
+         * Initial collection of prompts inserted into the database.
+         *
+         * Each Prompt contains:
+         * - text: The question shown to the user.
+         * - category: The topic or theme of the question.
+         * - timeOfDay: When the prompt is intended to be shown.
+         * - isMandatory: Whether the prompt is part of the required
+         *   daily journaling experience.
+         */
         val prompts = listOf(
 
             // =========================================================
@@ -613,8 +733,11 @@ class JournalRepository(private val dao: JournalDao) {
             )
         )
 
+        // Insert every initial prompt into the Room database.
+        // The DAO handles the actual database insertion.
         prompts.forEach { prompt ->
             dao.insertPrompt(prompt)
         }
     }
 }
+

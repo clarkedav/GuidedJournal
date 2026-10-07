@@ -6,6 +6,9 @@ import androidx.room.PrimaryKey
 /**
  * Entry - Data model representing a single journal entry.
  *
+ * This class defines the information that is stored for each
+ * journal response in the local Room database.
+ *
  * @property id Auto-generated unique identifier
  * @property date Timestamp of when the entry was created
  * @property content The text written by the user

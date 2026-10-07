@@ -57,7 +57,7 @@ interface JournalDao {
 
     /**
      * Retrieves multiple prompts for a specific time of day.
-     * Used when user requests more prompts.
+     * Used when the user requests more prompts.
      * @param timeOfDay Morning, Afternoon, or Night
      * @param limit How many prompts to return
      * @return List of random prompts for that time period
@@ -68,13 +68,27 @@ interface JournalDao {
         limit: Int
     ): List<Prompt>
 
+    /**
+     * Retrieves all mandatory prompts from the database.
+     * Used to select the required prompts for the daily journal.
+     * @return List of all mandatory Prompt objects
+     */
     @Query("SELECT * FROM prompts WHERE isMandatory = 1")
     suspend fun getAllMandatoryPrompts(): List<Prompt>
 
+    /**
+     * Retrieves all prompts from the database.
+     * Used when displaying the complete prompt library for browsing.
+     * @return List of all Prompt objects
+     */
     @Query("SELECT * FROM prompts")
     suspend fun getAllPrompts(): List<Prompt>
 
+    /**
+     * Counts the total number of prompts stored in the database.
+     * Used to determine whether the prompt database needs to be initialized.
+     * @return Total number of prompts
+     */
     @Query("SELECT COUNT(*) FROM prompts")
     suspend fun getPromptCount(): Int
 }
-
