@@ -12,7 +12,7 @@ The purpose of creating this software is to improve my skills in Kotlin, Android
 
 The application uses a local Room database, so journal entries remain available after the application is closed or the device is restarted.
 
-[Software Demo Video](http://youtube.link.goes.here)
+[Software Demo Video](https://youtu.be/F56HPNQD1q8)
 
 The video demonstration will show the application running on an Android emulator or device, 
 including the main screen, daily prompts, browsing prompts, selecting a prompt, writing and saving an entry, 
